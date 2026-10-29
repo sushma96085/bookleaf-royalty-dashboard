@@ -1,0 +1,1 @@
+{"request_id":"demo-001","author_id":"demo-author-001","author_name":"Demo Author","author_email":"demo@example.com","books":[{"title":"Example Book","status":"Published","copies_sold":100,"royalty_earned":4200,"royalty_paid":1000,"last_payout":"2026-07-01"}]}

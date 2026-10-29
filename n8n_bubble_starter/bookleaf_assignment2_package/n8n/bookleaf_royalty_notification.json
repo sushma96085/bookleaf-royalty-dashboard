@@ -1,0 +1,213 @@
+{
+  "name": "BookLeaf Royalty Notification Automation - STARTER",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bookleaf-royalty-summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "079fbd5d-018e-457b-8f9a-7da190fcd0ec",
+      "name": "Receive Royalty Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nif (!body.request_id || !body.author_id || !body.author_name || !Array.isArray(body.books)) throw new Error('Missing required request_id, author_id, author_name, or books');\nconst books = body.books.map(b => ({...b, royalty_earned: Number(b.royalty_earned||0), royalty_paid: Number(b.royalty_paid||0), copies_sold: Number(b.copies_sold||0)}));\nconst total_earned = books.reduce((s,b)=>s+b.royalty_earned,0);\nconst total_paid = books.reduce((s,b)=>s+b.royalty_paid,0);\nreturn [{json:{...body,books,total_earned,total_paid,total_pending:Math.max(0,total_earned-total_paid)}}];"
+      },
+      "id": "40b8e7ae-21ba-4d23-b642-a27c15575661",
+      "name": "Validate and Calculate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        430,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d=$input.first().json;\nconst prompt=`Write a warm, professional BookLeaf royalty summary email to ${d.author_name}. Published books and royalties: ${JSON.stringify(d.books)}. Totals: earned INR ${d.total_earned}, paid INR ${d.total_paid}, pending INR ${d.total_pending}. Include copies sold, status of unpublished/in-production books, a positive note if fully paid, and the quarterly payout cycle with up to 45 days processing window. Do not invent payout dates. Return plain email text.`;\nreturn [{json:{...d,ai_prompt:prompt}}];"
+      },
+      "id": "5b1fcc31-af0b-4663-9650-8841c0ab1bba",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:\"gpt-4o-mini\",messages:[{role:\"user\",content:$json.ai_prompt}],temperature:0.3}) }}",
+        "options": {}
+      },
+      "id": "adb5b512-3713-4735-b992-0f13d714b27a",
+      "name": "Generate AI Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ai=$input.first().json;\nconst request=$('Build AI Prompt').first().json;\nconst content=ai.choices?.[0]?.message?.content;\nif (!content) throw new Error('AI response missing email text');\nreturn [{json:{request_id:request.request_id,author_id:request.author_id,status:'Success',content,sent_at:new Date().toISOString()}}];"
+      },
+      "id": "ed4ffc74-50e6-48fa-a972-feb1f83586bd",
+      "name": "Prepare Bubble Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bookleaf-royalty-dashboard-39532.bubbleapps.io/version-test/api/1.1/obj/notificationlog",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.BUBBLE_API_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "39e15f23-3ea0-4367-a9ca-66ce5d86a4cb",
+      "name": "Log Success to Bubble",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status:\"Success\",message:\"Royalty summary generated and logged\"}) }}",
+        "options": {}
+      },
+      "id": "864a4c5d-ce8e-43ee-9391-fc8837f85d47",
+      "name": "Respond to Bubble",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Receive Royalty Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate and Calculate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Calculate": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Email": {
+      "main": [
+        [
+          {
+            "node": "Prepare Bubble Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Bubble Log": {
+      "main": [
+        [
+          {
+            "node": "Log Success to Bubble",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success to Bubble": {
+      "main": [
+        [
+          {
+            "node": "Respond to Bubble",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

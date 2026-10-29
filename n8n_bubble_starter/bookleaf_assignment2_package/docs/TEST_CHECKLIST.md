@@ -1,0 +1,12 @@
+# Verification checklist — not yet tested
+- [ ] Author, Book, RoyaltyRecord relationships match sample data
+- [ ] Login and privacy: Author A cannot see Author B data
+- [ ] Book details, totals, pending and overdue status accurate
+- [ ] Admin author search, city/status filters, author detail
+- [ ] Admin single and bulk trigger call webhook
+- [ ] AI-generated summary uses quarterly cycle + 45-day policy
+- [ ] Bubble NotificationLog updated with Success or Failed and timestamp
+- [ ] Duplicate requests prevented
+- [ ] AI and Bubble API failure paths tested
+- [ ] Bubble URL, editor access, author/admin test credentials supplied securely
+- [ ] README, exported n8n JSON and 3–5 minute walkthrough submitted

@@ -1,0 +1,160 @@
+{
+  "name": "BookLeaf Royalty Summary - Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bookleaf-royalty",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p=$input.first().json.body || {}; const secret=$input.first().json.headers?.['x-webhook-secret']; if (!secret || secret !== $env.WEBHOOK_SECRET) throw new Error('Unauthorized webhook'); if (!p.notification_id || !p.author?.author_id || !p.callback_url) throw new Error('Missing payload fields'); return [{json:p}];"
+      },
+      "id": "validate",
+      "name": "Validate Secret and Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:'gpt-4o-mini',messages:[{role:'system',content:'Write a warm professional BookLeaf royalty summary. Use only provided figures. Mention each published book, copies, earned, paid and pending; mention in-production books. Royalty payouts are quarterly within 45 days after quarter end; balances below INR 1000 roll over. Never guarantee a specific payout date without evidence. Output email body only.'},{role:'user',content:JSON.stringify($json.author)}],temperature:0.2}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ai",
+      "name": "Generate AI Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input=$('Validate Secret and Payload').first().json; const result=$input.first().json; const failed=!!result.error || !result.choices?.[0]?.message?.content; return [{json:{...input,status:failed?'Failed':'Success',message:failed?JSON.stringify(result.error||'AI response missing'):result.choices[0].message.content}}];"
+      },
+      "id": "result",
+      "name": "Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({notification_id:$json.notification_id,status:$json.status,message:$json.message}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "callback",
+      "name": "Callback Notification Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1190,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Secret and Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Secret and Payload": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Result": {
+      "main": [
+        [
+          {
+            "node": "Callback Notification Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
